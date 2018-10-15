@@ -1,4 +1,5 @@
 #Serial bus and others
+from sklearn.preprocessing import Normalizer
 from functools import reduce
 import serial
 # TensorFlow and tf.keras
@@ -23,9 +24,9 @@ def read_line():
     return float(data)
 
 
-def debouncer():
+def debouncer(pulses=5):
     test = []
-    for _ in range(5):
+    for _ in range(pulses):
         if read_line():
             test.append(True)
         else:
@@ -35,17 +36,12 @@ def debouncer():
 
 
 #Cambiar normalizacion o.. normalizar los datos de entrenamiento tambien
-def normalizar(data_line):
-    mean = data_line.mean(axis=0)
-    std = data_line.std(axis=0)
-    return (data_line - mean) / std
-
-
-def normalizar_matriz(matriz):
-    y, _ = matriz.shape
-    for i in range(y):
-        matriz[i, :] = normalizar(matriz[i, :])
-    return matriz
+def normalizar(data):
+    scaler = Normalizer(norm='l2')
+    if len(data) == 1:
+        return scaler.transform([data])
+    if len(data) > 1:
+        return scaler.transform(data)
 
 
 def load_train_data():
@@ -60,7 +56,7 @@ def load_train_data():
         _names = np.load('{}_names_{}.npy'.format(dataset, channel))
 
     feats, labels = data[:, 1:], data[:, :1]
-    feats = normalizar_matriz(feats)
+    feats = normalizar(feats)
     return feats, labels, _names
 
 
@@ -92,8 +88,10 @@ if __name__ == '__main__':
         while continuar:
 
             #Una fila de datos
-            while not debouncer():
+            test_data = np.zeros((1, 2500))
+            while not debouncer(pulses=3):
                 test_data = get_measure(2500)
+                test_data = normalizar(test_data)[0]
             # Add the image to a batch where it's the only member.
             test_data = (np.expand_dims(test_data, 0))
             if test_data.any():
