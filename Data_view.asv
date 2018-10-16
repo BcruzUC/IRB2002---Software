@@ -1,0 +1,5 @@
+close all
+clear all
+
+var = load('cyl_ch1');
+madicion = var

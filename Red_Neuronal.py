@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 print(tf.__version__)
 
-ser = serial.Serial("COM4", baudrate=115200, timeout=1)
+# ser = serial.Serial("COM4", baudrate=115200, timeout=1)
 
 
 def read_line():
@@ -37,7 +37,7 @@ def debouncer(pulses=5):
 
 #Cambiar normalizacion o.. normalizar los datos de entrenamiento tambien
 def normalizar(data):
-    scaler = Normalizer(norm='l2')
+    scaler = Normalizer(norm='max')
     if len(data) == 1:
         return scaler.transform([data])
     if len(data) > 1:
@@ -58,6 +58,12 @@ def load_train_data():
     feats, labels = data[:, 1:], data[:, :1]
     feats = normalizar(feats)
     return feats, labels, _names
+
+def load_test_data(path):
+    data = np.load(path + '.npy')
+    labels, feats = data[:, :1], data[:, 1:2501]
+    feats = normalizar(feats)
+    return labels, feats
 
 
 def get_measure(length):
@@ -82,11 +88,13 @@ if __name__ == '__main__':
                       loss='sparse_categorical_crossentropy',
                       metrics=['accuracy'])
 
-        model.fit(train_data, train_labels, epochs=15)
+        model.fit(train_data, train_labels, epochs=17)
 
+    test_mode = input('Modo de prueba [sensor/dataset]: ')
+
+    if test_mode.lower() == 'sensor':
         continuar = True
         while continuar:
-
             #Una fila de datos
             test_data = np.zeros((1, 2500))
             while not debouncer(pulses=3):
@@ -104,5 +112,12 @@ if __name__ == '__main__':
 
 
                 continuar = True if input('Desea continuar? y/n: ') == 'y' else False
+
+    if test_mode.lower() == 'dataset':
+        Tlabels, Tfeats = load_test_data('Database_1_total_ch2')
+        print(Tfeats.shape)
+        test_loss, test_acc = model.evaluate(Tfeats, Tlabels)
+
+        print('Test accuracy:', test_acc)
 
 

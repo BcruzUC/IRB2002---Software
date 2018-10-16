@@ -69,7 +69,7 @@ import os
 
 def sort_measures(data, channel='ch1'):
     data_keys = [name for name in list(data) if channel in name]
-    total_data = np.zeros((300, 2501))
+    total_data = np.zeros((150, 3001))
     for i, name in enumerate(data_keys):
         y, x = data[name].shape
         label = np.ones((y, 1)) * i
@@ -82,7 +82,7 @@ def sort_measures(data, channel='ch1'):
 
 
 temp_dict = defaultdict(list)
-folder_name = 'Database_2'
+folder_name = 'Database_1'
 
 dir_list = os.listdir(folder_name)
 for path in dir_list:
@@ -107,6 +107,6 @@ channel = input('Elija set de datos [ch1/ ch2]: ')
 save_data, data_keys = sort_measures(total_dict, channel=channel)
 save_data = abs(save_data)
 
-# np.save('{}_total_{}'.format(folder_name, channel), save_data)
-np.save('{}_names_{}'.format(folder_name, channel), data_keys)
+np.save('{}_total_{}'.format(folder_name, channel), save_data)
+# np.save('{}_names_{}'.format(folder_name, channel), data_keys)
 
