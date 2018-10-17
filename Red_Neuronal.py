@@ -79,45 +79,57 @@ if __name__ == '__main__':
 
     train_data, train_labels, names = load_train_data()
 
-    with tf.device('/device:GPU:1'):
-        model = keras.Sequential([
-        keras.layers.Dense(128, activation=tf.nn.relu),
-        keras.layers.Dense(6, activation=tf.nn.softmax)])
+    plot_data = []
 
-        model.compile(optimizer=tf.train.AdamOptimizer(),
-                      loss='sparse_categorical_crossentropy',
-                      metrics=['accuracy'])
+    for neuron_num in (64, 128, 256, 512):
 
-        model.fit(train_data, train_labels, epochs=17)
+        with tf.device('/device:GPU:1'):
+            model = keras.Sequential([
+            keras.layers.Dense(neuron_num, activation=tf.nn.relu),
+            keras.layers.Dense(6, activation=tf.nn.softmax)])
 
-    test_mode = input('Modo de prueba [sensor/dataset]: ')
+            model.compile(optimizer=tf.train.AdamOptimizer(),
+                          loss='sparse_categorical_crossentropy',
+                          metrics=['accuracy'])
 
-    if test_mode.lower() == 'sensor':
-        continuar = True
-        while continuar:
-            #Una fila de datos
-            test_data = np.zeros((1, 2500))
-            while not debouncer(pulses=3):
-                test_data = get_measure(2500)
-                test_data = normalizar(test_data)[0]
-            # Add the image to a batch where it's the only member.
-            test_data = (np.expand_dims(test_data, 0))
-            if test_data.any():
+            model.fit(train_data, train_labels, epochs=17)
 
-                pred_single = model.predict(test_data)
+        test_mode = 'dataset'   # input('Modo de prueba [sensor/dataset]: ')
 
-                ind = np.argmax(pred_single)
-                print(pred_single)
-                print(names[ind] + '\n')
+        if test_mode.lower() == 'sensor':
+            continuar = True
+            while continuar:
+                #Una fila de datos
+                test_data = np.zeros((1, 2500))
+                while not debouncer(pulses=3):
+                    test_data = get_measure(2500)
+                    test_data = normalizar(test_data)[0]
+                # Add the image to a batch where it's the only member.
+                test_data = (np.expand_dims(test_data, 0))
+                if test_data.any():
+
+                    pred_single = model.predict(test_data)
+
+                    ind = np.argmax(pred_single)
+                    print(pred_single)
+                    print(names[ind] + '\n')
 
 
-                continuar = True if input('Desea continuar? y/n: ') == 'y' else False
+                    continuar = True if input('Desea continuar? y/n: ') == 'y' else False
 
-    if test_mode.lower() == 'dataset':
-        Tlabels, Tfeats = load_test_data('Database_1_total_ch2')
-        print(Tfeats.shape)
-        test_loss, test_acc = model.evaluate(Tfeats, Tlabels)
+        if test_mode.lower() == 'dataset':
+            Tlabels, Tfeats = load_test_data('Database_1_total_ch2')
+            print(Tfeats.shape)
+            test_loss, test_acc = model.evaluate(Tfeats, Tlabels)
 
-        print('Test accuracy:', test_acc)
+            print('Test accuracy:', test_acc)
+
+            plot_data.append((neuron_num, test_acc))
+
+    plt_x = [x[0] for x in plot_data]
+    plt_y = [x[1] for x in plot_data]
+
+    plt.plot(plt_x, plt_y)
+    plt.show()
 
 
