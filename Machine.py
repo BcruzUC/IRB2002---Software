@@ -1,8 +1,8 @@
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.neighbors import KNeighborsClassifier as KNN
-from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
+import matplotlib.pyplot as plt
 from time import sleep
 import numpy as np
 import random as rn
@@ -64,9 +64,7 @@ def partition_data(feats, moves, test_size=0.2):
 
     return train, test
 
-def pca_features(feats):
-    ncmp = feats.shape[1] - 500
-
+def pca_features(feats, ncmp):
     print("[Seleccion] Aplicando PCA...")
     pca = PCA(n_components=ncmp, svd_solver='full')
     pca.fit(feats)
@@ -106,9 +104,8 @@ def classify(test_data, test_label, lda, svm, knn):
         result[1] += svm_predict
         result[2] += knn_predict
 
-
-    print(f"\nLDA: {result[0]} || SVM:  {result[1]} ||"
-          f" KNN: {result[2]}")
+    # print(f"\nLDA: {result[0]} || SVM:  {result[1]} ||"
+    #       f" KNN: {result[2]}")
 
     return np.array(result) / N
 
@@ -150,20 +147,36 @@ if __name__ == '__main__':
 
     train, test = partition_data(load_data(), moves=moves, test_size=0.2)
 
-    train_feats, train_labels = train[:, 1:], train[:, :1]
-    test_feats, test_labels = test[:, 1:], test[:, :1]
-
-    ncmp = train_feats.shape[1] - 500
+    ncmp = [num for num in range(200, 2000, 100)]
 
     pca_bool = True if input('Desea aplicar PCA? [y/~]: ') == 'y' else False
-    if pca_bool:
-        train_feats, pca = pca_features(train_feats)
-        test_feats = pca.transform(test_feats)
+    acc_stack = []
+    for pca_num in ncmp:
 
-    lda, svm, knn = train_predict(train_feats, train_labels, ncmp=ncmp)
+        train_feats, train_labels = train[:, 1:], train[:, :1]
+        test_feats, test_labels = test[:, 1:], test[:, :1]
 
-    result = classify(test_feats, test_labels, lda=lda, svm=svm, knn=knn)
+        if pca_bool:
+            train_feats, pca = pca_features(train_feats, ncmp=pca_num)
+            test_feats = pca.transform(test_feats)
 
-    print('Acc obtenida en LDA: {} SVM: {} KNN: {}'.format(*result))
+        lda, svm, knn = train_predict(train_feats, train_labels, ncmp=pca_num)
 
+        result = classify(test_feats, test_labels, lda=lda, svm=svm, knn=knn)
+        result = np.insert(result, 0, pca_num)
+        acc_stack.append(result)
 
+        print('\nAcc obtenida en {} para LDA: {} SVM: {} KNN: {}'.format(pca_num, *result))
+
+    x = np.array([line[0] for line in acc_stack])
+
+    y_lda = np.array([line[1] for line in acc_stack])
+    y_svm = np.array([line[2] for line in acc_stack])
+    y_knn = np.array([line[3] for line in acc_stack])
+
+    plt.plot(x, y_lda, color='blue', label='LDA')
+    plt.plot(x, y_svm, color='green', label='SVM')
+    plt.plot(x, y_knn, color='red', label='KNN')
+
+    plt.legend(loc='best')
+    plt.show()
