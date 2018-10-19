@@ -66,6 +66,56 @@ def load_test_data(path):
     return labels, feats
 
 
+def load_data():
+    Dat2_data = np.load('Database_2_total.npy')
+    Dat1_data_ch1 = np.load('Database_1_total_ch1.npy')
+    Dat1_data_ch2 = np.load('Database_1_total_ch2.npy')
+    _names = np.load('database_2_names_ch1.npy')
+
+    total_data = np.array([])
+    for i in range(6):
+        if not total_data.any():
+            total_data = np.concatenate((Dat2_data[i * 600:i * 600 + 600, :],
+                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
+                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
+                                        axis=0)
+        else:
+            total_data = np.concatenate((total_data,
+                                         Dat2_data[i * 600:i * 600 + 600, :],
+                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
+                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
+                                        axis=0)
+    return total_data
+
+def partition_data(feats, moves, test_size=0.2):
+    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5}
+    mod_feats = np.array([])
+    # Seleccionar solo los movimientos indicados en 'moves'
+    for name in moves:
+        num = names2num[name]
+        temp = feats[num * 900:num * 900 + 900, :]
+        if not mod_feats.any():
+            mod_feats = temp
+        else:
+            mod_feats = np.concatenate((mod_feats, temp), axis=0)
+    # Llenar las listas segun el porcentaje de testeo que queremos
+    train = []
+    test = []
+    for i in range(len(moves)):
+        for data in range(900):
+            if data < (900 - test_size * 900):
+                train.append(feats[data + i * 900, :])
+            else:
+                test.append(feats[data + i * 900, :])
+
+    train = np.array(train)
+    test = np.array(test)
+
+    print("\n[Hold-Out] Paritioning features into 2 arrays with shapes {} and {}\n".format(train.shape, test.shape))
+
+    return train, test
+
+
 def get_measure(length):
     test_feat = []
     print('Tomando medicion !!')
@@ -77,22 +127,29 @@ def get_measure(length):
 
 if __name__ == '__main__':
 
-    train_data, train_labels, names = load_train_data()
+    # train_data, train_labels, names = load_train_data()
+
+    moves = ['palm', 'spher']
+
+    train, test = partition_data(load_data(), moves=moves, test_size=0.2)
+
+    train_feats, train_labels = train[:, 1:], train[:, :1]
+    test_feats, test_labels = test[:, 1:], test[:, :1]
 
     plot_data = []
 
-    for neuron_num in (64, 128, 256, 512):
+    for neuron_num in range(5):
 
         with tf.device('/device:GPU:1'):
             model = keras.Sequential([
-            keras.layers.Dense(neuron_num, activation=tf.nn.relu),
+            keras.layers.Dense(512, activation=tf.nn.relu),
             keras.layers.Dense(6, activation=tf.nn.softmax)])
 
             model.compile(optimizer=tf.train.AdamOptimizer(),
                           loss='sparse_categorical_crossentropy',
                           metrics=['accuracy'])
 
-            model.fit(train_data, train_labels, epochs=17)
+            model.fit(train_feats, train_labels, epochs=10)
 
         test_mode = 'dataset'   # input('Modo de prueba [sensor/dataset]: ')
 
@@ -118,9 +175,9 @@ if __name__ == '__main__':
                     continuar = True if input('Desea continuar? y/n: ') == 'y' else False
 
         if test_mode.lower() == 'dataset':
-            Tlabels, Tfeats = load_test_data('Database_1_total_ch2')
-            print(Tfeats.shape)
-            test_loss, test_acc = model.evaluate(Tfeats, Tlabels)
+            # Tlabels, Tfeats = load_test_data('Database_1_total_ch2')
+            # print(Tfeats.shape)
+            test_loss, test_acc = model.evaluate(test_feats, test_labels)
 
             print('Test accuracy:', test_acc)
 

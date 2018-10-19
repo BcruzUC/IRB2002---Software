@@ -10,75 +10,76 @@ import serial
 import os
 
 
-def get_both_database(data1, data2, _size=300):
-    channel_1 = data1[:, 1:]
-    channel_2 = data2[:, 1:]
-    output = np.array([])
-    for i in range(6):
-        temp1 = channel_1[i*_size:(i * _size) + _size, :]
-        temp2 = channel_2[i*_size:(i * _size) + _size, :]
-        label = np.ones((2 * _size, 1)) * i
-        temp_out = np.concatenate((temp1, temp2), axis=0)
-        temp_out = np.concatenate((label, temp_out), axis=1)
-        if not output.any():
-            output = temp_out
-        else:
-            output = np.concatenate((output, temp_out), axis=0)
-        np.save('Database_2_total', output)
-
 def normalizar(data_file):
     mean = data_file.mean(axis=0)
     std = data_file.std(axis=0)
     return (data_file - mean) / std
 
+def load_data():
+    Dat2_data = np.load('Database_2_total.npy')
+    Dat1_data_ch1 = np.load('Database_1_total_ch1.npy')
+    Dat1_data_ch2 = np.load('Database_1_total_ch2.npy')
+    _names = np.load('database_2_names_ch1.npy')
 
-def extract_features(mode, ncmp):
-    feats = None
-    labels = None
-    names = None
-    if f'{mode}.npy' or f"features_{mode}.npy" in os.listdir("./"):
+    total_data = np.array([])
+    for i in range(6):
+        if not total_data.any():
+            total_data = np.concatenate((Dat2_data[i * 600:i * 600 + 600, :],
+                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
+                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
+                                        axis=0)
+        else:
+            total_data = np.concatenate((total_data,
+                                         Dat2_data[i * 600:i * 600 + 600, :],
+                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
+                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
+                                        axis=0)
+    return total_data
 
-        # # Para futuro.. por ahora simple nomas
-        # load = input("[Seleccion] Se han detectado archivos '.npy'. Deseas cargarlos para ahorrar tiempo? y/n: ")
-        if not 'Database' in mode:
-            mode = f"features_{mode}"
-        data = np.load(mode + '.npy')
-        if 'ch1' in mode:
-            names = np.load('Database_2_names_ch1.npy')
-        if 'ch2' in mode:
-            names = np.load('Database_2_names_ch2.npy')
+def partition_data(feats, moves, test_size=0.2):
+    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5}
+    mod_feats = np.array([])
+    # Seleccionar solo los movimientos indicados en 'moves'
+    for name in moves:
+        num = names2num[name]
+        temp = feats[num * 900:num * 900 + 900, :]
+        if not mod_feats.any():
+            mod_feats = temp
+        else:
+            mod_feats = np.concatenate((mod_feats, temp), axis=0)
+    # Llenar las listas segun el porcentaje de testeo que queremos
+    train = []
+    test = []
+    for i in range(len(moves)):
+        for data in range(900):
+            if data < (900 - test_size * 900):
+                train.append(feats[data + i * 900, :])
+            else:
+                test.append(feats[data + i * 900, :])
 
-        labels, feats = np.array(data[:, :1]).astype(int),\
-                        np.array(data[:, 1:]).astype(int)
+    train = np.array(train)
+    test = np.array(test)
 
-        print("[Seleccion] Normalizando...")
-        # scaler = StandardScaler().fit(feats)  # Normalizacion
-        # feats = scaler.transform(feats)
+    print("\n[Hold-Out] Paritioning features into 2 arrays with shapes {} and {}\n".format(train.shape, test.shape))
 
-        do_pca = input('Desea aplicar PCA a los datos? y/n: ')
-        if do_pca.lower() == 'y':
-            print("[Seleccion] Aplicando PCA...")
-            pca = PCA(n_components=ncmp, svd_solver='full')
-            pca.fit(feats)
-            feats = pca.transform(feats)
+    return train, test
 
-            return feats, labels, None, pca, names
+def pca_features(feats):
+    ncmp = feats.shape[1] - 500
+
+    print("[Seleccion] Aplicando PCA...")
+    pca = PCA(n_components=ncmp, svd_solver='full')
+    pca.fit(feats)
+    feats = pca.transform(feats)
 ##        save = input("Deseas guardar los resultados para futuras instancias? y/n: \n")
 ##        if save.lower() == 'y':
 ##            np.save("{}feats_data".format(mode+"_"), feats)
 ##            pickle.dump(pca, open("{}pca.p".format(mode+"_"), "wb"))
 ##            pickle.dump(scaler, open("{}scaler.p".format(mode+"_"), "wb"))
-    else:
-        #Extraer nuevas features.. para futuro tambien
-        pass
+    return feats, pca
 
-    return feats, labels, None, None, names
-
-def train_predict(feats_dict, ncmp):
+def train_predict(feats, labels, ncmp):
     print("[Clasificacion] Entrenando clasificadores...")
-
-    feats, labels = feats_dict["feats"], feats_dict["labels"]
-    labels = np.ravel(labels)
 
     lda = LDA(n_components=ncmp)
     lda.fit(feats, labels)
@@ -91,19 +92,25 @@ def train_predict(feats_dict, ncmp):
 
     return lda, svm, knn
 
-def classify(Test_data, names, lda, svm, knn):
 
-    print("[Clasificacion] Probando clasificadores...")
+def classify(test_data, test_label, lda, svm, knn):
+    print("\n[Clasificacion] Probando clasificadores...")
+    N, _ = test_data.shape
+    result = [0, 0, 0]
+    for i, element in enumerate(test_data):
+        lda_predict = 1 if lda.predict([element])[0] == test_label[i] else 0
+        svm_predict = 1 if svm.predict([element])[0] == test_label[i] else 0
+        knn_predict = 1 if knn.predict([element])[0] == test_label[i] else 0
 
-    lda_predict = lda.predict(Test_data)[0]
-    svm_predict = svm.predict(Test_data)[0]
-    knn_predict = knn.predict(Test_data)[0]
+        result[0] += lda_predict
+        result[1] += svm_predict
+        result[2] += knn_predict
 
-    print(f"LDA: {names[lda_predict]} || SVM:  {names[svm_predict]} ||"
-          f" KNN: {names[knn_predict]}")
-    print()
 
-    return lda
+    print(f"\nLDA: {result[0]} || SVM:  {result[1]} ||"
+          f" KNN: {result[2]}")
+
+    return np.array(result) / N
 
 def get_measure(length):
     ser = serial.Serial("COM4", baudrate=115200, timeout=1)
@@ -139,37 +146,24 @@ def create_measure(_type, peak_val, duration, length=5000):
 
 if __name__ == '__main__':
 
-    data1 = np.load('Database_2_total_ch1.npy')
-    data2 = np.load('Database_2_total_ch2.npy')
-    get_both_database(data1, data2, _size=300)
+    moves = ['palm', 'spher']
 
-    input()
+    train, test = partition_data(load_data(), moves=moves, test_size=0.2)
 
-    """Funcion principal del programa"""
+    train_feats, train_labels = train[:, 1:], train[:, :1]
+    test_feats, test_labels = test[:, 1:], test[:, :1]
 
-    ncmp = 2500
+    ncmp = train_feats.shape[1] - 500
 
-    # Training Feature Extraction
-    print("\n[Extraccion Features] Procesando datos...")
-    file = input('Ingrese sector de los datos: ')
-    feats, labels, scaler, train_pca, names = extract_features(file, ncmp=ncmp)
+    pca_bool = True if input('Desea aplicar PCA? [y/~]: ') == 'y' else False
+    if pca_bool:
+        train_feats, pca = pca_features(train_feats)
+        test_feats = pca.transform(test_feats)
 
-    feats_dict = {'feats': feats, 'labels': labels}
-    trained_pred = train_predict(feats_dict, ncmp=ncmp)
-    continuar = True
-    while continuar:
-        test_line = get_measure(length=2500)
-        # option = input('Choose finger / fist: ')
-        # test_line = create_measure(option, peak_val=1, duration=300, length=2500)
-        if scaler or train_pca:
-            print('Aplicando PCA a test line')
-            _size = feats_dict["feats"].shape[0]
-            test_line = np.tile(test_line, (_size, 1))
-            print('Forma Test line: ', test_line.shape)
-            test_line = train_pca.transform(test_line)
-            test_line = test_line[:1, :]
-        test_line = test_line.reshape(1, -1)
-        classify(test_line, names, *trained_pred)
+    lda, svm, knn = train_predict(train_feats, train_labels, ncmp=ncmp)
 
-        continuar = True if input('Desea continuar? y/n: ') == 'y' else False
+    result = classify(test_feats, test_labels, lda=lda, svm=svm, knn=knn)
+
+    print('Acc obtenida en LDA: {} SVM: {} KNN: {}'.format(*result))
+
 

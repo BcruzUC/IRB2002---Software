@@ -14,6 +14,60 @@ def normalizar(data):
         return scaler.transform(data)
 
 
+def load_data():
+    decision = input('Database 2     [d2]\nDatabase 1 + 2 [all]\nopcion: ')
+    Dat2_data = np.load('Database_2_total.npy')
+    if decision.lower() == 'd2':
+        return Dat2_data
+    Dat1_data_ch1 = np.load('Database_1_total_ch1.npy')
+    Dat1_data_ch2 = np.load('Database_1_total_ch2.npy')
+    _names = np.load('database_2_names_ch1.npy')
+
+    total_data = np.array([])
+    for i in range(6):
+        if not total_data.any():
+            total_data = np.concatenate((Dat2_data[i * 600:i * 600 + 600, :],
+                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
+                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
+                                        axis=0)
+        else:
+            total_data = np.concatenate((total_data,
+                                         Dat2_data[i * 600:i * 600 + 600, :],
+                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
+                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
+                                        axis=0)
+    return total_data
+
+def partition_data(feats, moves, test_size=0.2):
+    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5}
+    mod_feats = np.array([])
+    # Seleccionar solo los movimientos indicados en 'moves'
+    for name in moves:
+        num = names2num[name]
+        temp = feats[num * 900:num * 900 + 900, :]
+        if not mod_feats.any():
+            mod_feats = temp
+        else:
+            mod_feats = np.concatenate((mod_feats, temp), axis=0)
+    # Llenar las listas segun el porcentaje de testeo que queremos
+    train = []
+    test = []
+    for i in range(len(moves)):
+        for data in range(900):
+            if data < (900 - test_size * 900):
+                train.append(feats[data + i * 900, :])
+            else:
+                test.append(feats[data + i * 900, :])
+
+    train = np.array(train)
+    test = np.array(test)
+
+    print("\n[Hold-Out] Paritioning features into 2 arrays with shapes {} and {}\n".format(train.shape, test.shape))
+
+    return train, test
+
+
+
 def load_train_data():
     total = input('Desea cargar todos los datos o solo un channel? [t/u]: ')
     if total.lower() == 't':
@@ -37,14 +91,17 @@ def load_test_data(path):
 
 
 def train_classifiers(feats, zero_num=300, alpha=0.01):
-    y = np.ones((600, 1))    #Evaluar valores en los test
-    y[600 - zero_num:, :] = np.zeros((zero_num, 1))
+
+    N, M = feats.shape
+
+    y = np.ones((N//2, 1))                                   #Evaluar valores en los test
+    y[N//2 - zero_num:, :] = np.zeros((zero_num, 1))
     spher_class = lm.Ridge(alpha=alpha, normalize=True)
     palm_class = lm.Ridge(alpha=alpha, normalize=True)
     # cyl_class = lm.Ridge(alpha=0.001, normalize=True)
 
-    spher_class.fit(feats[3000:3600, :], y)  #clase 5
-    palm_class.fit(feats[2400:3000, :], y)   #clase 4
+    spher_class.fit(feats[:N//2, :], y)  #clase 5
+    palm_class.fit(feats[N//2:N, :], y)   #clase 4
     # cyl_class.fit(feats[:600, :], y)         #clase 1
 
     return spher_class, palm_class # cyl_class
@@ -69,22 +126,26 @@ def classify(test_data, test_label, spher, palm):
             fails[pred_ind] += 1
     # print(fails)
 
-    return np.array(acc_list) / 150
+    return np.array(acc_list) / test_data.shape[0] / 2
 
 
 
 if __name__ == '__main__':
-    train_feat, _, names = load_train_data()
-    test_feat, _ = load_test_data('Database_1_total_ch2')
-    names = names[4], names[3]
+    moves = ['palm', 'spher']
 
-    test_feat = np.concatenate((test_feat[600:750, :],
-                                test_feat[450:600, :]), axis=0)
-    test_label = np.concatenate((np.zeros((150, 1)), np.ones((150, 1))), axis=0)
+    feats = load_data()
 
+    train, test = partition_data(feats, moves=moves,
+                                           test_size=0.3)
+    train_feat, train_label = train[:, 1:], train[:, :1]
+    test_feat, test_label = test[:, 1:], test[:, :1]
+
+    N, M = train_feat.shape
     max_by_num = []
-    n_list = list(range(200, 500, 10))
+    n_list = list(range(200, N//2 - 100, 10))
     for n in n_list:
+
+        print(f'\nRealizando iteracion: {n}')
 
         spher, palm = train_classifiers(train_feat, zero_num=n, alpha=0.001)
 
@@ -105,10 +166,15 @@ if __name__ == '__main__':
     tot_x = np.array(n_list)
 
     avg_y = np.array(avg_by_num)
+    spher_y = [x[0] for x in max_by_num]
+    palm_y = [x[1] for x in max_by_num]
 
-
-    plt.plot(tot_x, avg_y)
-    # plt.plot(tot_x, )
+    plt.plot(tot_x, avg_y, color='blue', label='Promedio esférica - palmar')
+    plt.legend(loc='best')
+    plt.show()
+    plt.plot(tot_x, spher_y, color='green', label='Precisión esférica')
+    plt.plot(tot_x, palm_y, color='red', label='Precisión palmar')
+    plt.legend(loc='best')
     plt.show()
 
 
