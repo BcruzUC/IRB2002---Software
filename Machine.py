@@ -151,6 +151,7 @@ if __name__ == '__main__':
 
     pca_bool = True if input('Desea aplicar PCA? [y/~]: ') == 'y' else False
     acc_stack = []
+
     for pca_num in ncmp:
 
         train_feats, train_labels = train[:, 1:], train[:, :1]
