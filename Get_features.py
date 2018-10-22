@@ -2,38 +2,70 @@ import numpy as np
 import serial
 from time import sleep
 
+def read_line():
+    line = ser.readline()
+    data = str(line.decode('cp437')).strip('\r0\r\n')
+    if not data.isnumeric():
+        data = 0
+    try:
+        return int(data)
+    except ValueError:
+        return 0
+
+
+def debouncer(pulses=5):
+    test = []
+    for _ in range(pulses):
+        if read_line() != 0:
+            test.append(True)
+        else:
+            test.append(False)
+    eval = reduce(lambda x, y: x and y, test)
+    return eval
+
+
+#Cambiar normalizacion o.. normalizar los datos de entrenamiento tambien
+def normalizar(data):
+    scaler = Normalizer(norm='max')
+    if len(data[:, 0]) == 1:
+        # data = data.reshape(1, -1)
+        return scaler.transform(data)
+    if len(data)[:, 0] > 1:
+        return scaler.transform(data)
+
+
+def get_measure(length):
+    test_feat = []
+    print('Tomando medicion !!')
+    while len(test_feat) < length:  #esa cantidad mas 1 del label
+        data = read_line()
+        test_feat.append(float(data))
+    test_feat = np.array(test_feat).reshape(1, -1)
+    return normalizar(test_feat)
+
 
 ser = serial.Serial("COM4", baudrate=115200, timeout=1)
-count = 0
 
-features = []
-labels = []
+
+count = 0
+features = np.array([])
+
 while count < 60:
 
     print(f"Ingresando dato {count} a la matriz.. preparese")
-    feature_line = [input('Ingrese label de la muestra proxima: ')]
-    print('Tomando muestra en 3..')
-    sleep(0.5)
-    print('Tomando muestra en 2..')
-    sleep(0.5)
-    print('Tomando muestra en 1..')
-    sleep(0.5)
-    print('¡ YA !')
-    sleep(0.5)
-    while len(feature_line) <= 5000:  #esa cantidad mas 1 del label
-        line = ser.readline()
-        data = str(line.decode('cp437')).strip('\r0\r\n')
-        if not data.isnumeric():
-            data = 0
-        feature_line.append(int(data))
-    print(feature_line)
-    print('###  Fin de la muestra  ###')
-    features.append(feature_line)
+    label = [input('Ingrese label de la muestra proxima: ')]
+    while True:
+        if debouncer(pulses=13):
+            test_data = get_measure(2500)
+            test_data = np.insert(test_data, 0, label)
+            np.append(features, test_data, axis=1)
+            break
+    print('###  Fin de la muestra  ###\n')
     count += 1
-    print()
 
 save = input('desea guardar los datos recopilados? [y/n]: ')
 if save.lower() == 'y':
     features = np.array(features)
-    save_name = input('Ingrese nombre del sector medido: ')
-    np.save(f"features_{save_name}", features)
+    features = normalizar(features)
+    save_name = input('Ingrese nombre del archivo: ')
+    np.save(save_name, features)

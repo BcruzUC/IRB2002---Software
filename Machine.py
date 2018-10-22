@@ -130,16 +130,6 @@ def get_measure(length):
     return normalizar(final_data)
     print()
 
-def create_measure(_type, peak_val, duration, length=5000):
-    measure = np.zeros((1, length))
-    if _type == 'finger':
-        measure[:, 1000: 1000 + duration] = np.ones((1, duration)) * \
-                                            peak_val * rn.uniform(0.6, 1.2)
-    if _type == 'fist':
-        measure[:, 100:] = np.ones((1, length - 100)) * peak_val * \
-                           rn.uniform(0.6, 1.2)
-    return measure
-
 
 if __name__ == '__main__':
 

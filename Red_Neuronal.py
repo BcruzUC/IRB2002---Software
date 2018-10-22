@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 print(tf.__version__)
 
-# ser = serial.Serial("COM4", baudrate=115200, timeout=1)
+ser = serial.Serial("COM4", baudrate=115200, timeout=1)
 
 
 def read_line():
@@ -21,13 +21,16 @@ def read_line():
     data = str(line.decode('cp437')).strip('\r0\r\n')
     if not data.isnumeric():
         data = 0
-    return float(data)
+    try:
+        return int(data)
+    except ValueError:
+        return 0
 
 
 def debouncer(pulses=5):
     test = []
     for _ in range(pulses):
-        if read_line():
+        if read_line() != 0:
             test.append(True)
         else:
             test.append(False)
@@ -38,9 +41,10 @@ def debouncer(pulses=5):
 #Cambiar normalizacion o.. normalizar los datos de entrenamiento tambien
 def normalizar(data):
     scaler = Normalizer(norm='max')
-    if len(data) == 1:
-        return scaler.transform([data])
-    if len(data) > 1:
+    if len(data[:, 0]) == 1:
+        # data = data.reshape(1, -1)
+        return scaler.transform(data)
+    if len(data)[:, 0] > 1:
         return scaler.transform(data)
 
 
@@ -122,12 +126,11 @@ def get_measure(length):
     while len(test_feat) < length:  #esa cantidad mas 1 del label
         data = read_line()
         test_feat.append(float(data))
-    return normalizar(np.array(test_feat))
+    test_feat = np.array(test_feat).reshape(1, -1)
+    return normalizar(test_feat)
 
 
 if __name__ == '__main__':
-
-    # train_data, train_labels, names = load_train_data()
 
     moves = ['palm', 'spher']
 
@@ -136,57 +139,60 @@ if __name__ == '__main__':
     train_feats, train_labels = train[:, 1:], train[:, :1]
     test_feats, test_labels = test[:, 1:], test[:, :1]
 
-    plot_data = []
+    # plot_data = []
+    #
+    # for neuron_num in range(5):
 
-    for neuron_num in range(5):
+    with tf.device('/device:GPU:1'):
+        model = keras.Sequential([
+        keras.layers.Dense(512, activation=tf.nn.relu),
+        keras.layers.Dense(2, activation=tf.nn.softmax)])
 
-        with tf.device('/device:GPU:1'):
-            model = keras.Sequential([
-            keras.layers.Dense(512, activation=tf.nn.relu),
-            keras.layers.Dense(6, activation=tf.nn.softmax)])
+        model.compile(optimizer=tf.train.AdamOptimizer(),
+                      loss='sparse_categorical_crossentropy',
+                      metrics=['accuracy'])
 
-            model.compile(optimizer=tf.train.AdamOptimizer(),
-                          loss='sparse_categorical_crossentropy',
-                          metrics=['accuracy'])
+        model.fit(train_feats, train_labels, epochs=10)
 
-            model.fit(train_feats, train_labels, epochs=10)
+    test_mode = input('Modo de prueba [sensor/dataset]: ')
 
-        test_mode = 'dataset'   # input('Modo de prueba [sensor/dataset]: ')
-
-        if test_mode.lower() == 'sensor':
-            continuar = True
-            while continuar:
-                #Una fila de datos
-                test_data = np.zeros((1, 2500))
-                while not debouncer(pulses=3):
+    if test_mode.lower() == 'sensor':
+        continuar = True
+        while continuar:
+            #Una fila de datos
+            test_data = np.zeros((1, 2500))
+            while True:
+                if debouncer(pulses=10):
                     test_data = get_measure(2500)
-                    test_data = normalizar(test_data)[0]
-                # Add the image to a batch where it's the only member.
-                test_data = (np.expand_dims(test_data, 0))
-                if test_data.any():
+                    break
+            # Add the image to a batch where it's the only member.
+            # test_data = (np.expand_dims(test_data, 0))
+            if test_data.any():
+                test_data = test_data.reshape(1, -1)
 
-                    pred_single = model.predict(test_data)
+                pred_single = model.predict(test_data)
 
-                    ind = np.argmax(pred_single)
-                    print(pred_single)
-                    print(names[ind] + '\n')
+                ind = np.argmax(pred_single)
+                print(pred_single)
+                moves = moves[::-1]
+                print(moves[ind] + '\n')
 
 
-                    continuar = True if input('Desea continuar? y/n: ') == 'y' else False
+                continuar = True if input('Desea continuar? y/n: ') == 'y' else False
 
-        if test_mode.lower() == 'dataset':
-            # Tlabels, Tfeats = load_test_data('Database_1_total_ch2')
-            # print(Tfeats.shape)
-            test_loss, test_acc = model.evaluate(test_feats, test_labels)
+    if test_mode.lower() == 'dataset':
+        # Tlabels, Tfeats = load_test_data('Database_1_total_ch2')
+        # print(Tfeats.shape)
+        test_loss, test_acc = model.evaluate(test_feats, test_labels)
 
-            print('Test accuracy:', test_acc)
+        print('Test accuracy:', test_acc)
 
-            plot_data.append((neuron_num, test_acc))
+        # plot_data.append((neuron_num, test_acc))
 
-    plt_x = [x[0] for x in plot_data]
-    plt_y = [x[1] for x in plot_data]
-
-    plt.plot(plt_x, plt_y)
-    plt.show()
+    # plt_x = [x[0] for x in plot_data]
+    # plt_y = [x[1] for x in plot_data]
+    #
+    # plt.plot(plt_x, plt_y)
+    # plt.show()
 
 
