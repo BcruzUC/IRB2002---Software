@@ -1,6 +1,9 @@
 #Serial bus and others
 from sklearn.preprocessing import Normalizer
+from sklearn.model_selection import train_test_split
 from functools import reduce
+import pygame
+import time
 import serial
 # TensorFlow and tf.keras
 import tensorflow as tf
@@ -14,7 +17,10 @@ import matplotlib.pyplot as plt
 print(tf.__version__)
 
 ser = serial.Serial("COM4", baudrate=115200, timeout=1)
-
+time.sleep(5)
+pygame.init()
+screen = pygame.display.set_mode((640, 480))
+pygame.display.flip()
 
 def read_line():
     line = ser.readline()
@@ -40,77 +46,57 @@ def debouncer(pulses=5):
 
 #Cambiar normalizacion o.. normalizar los datos de entrenamiento tambien
 def normalizar(data):
-    scaler = Normalizer(norm='max')
+    scaler = Normalizer(norm='l2')
     if len(data[:, 0]) == 1:
-        # data = data.reshape(1, -1)
+        data = data.reshape(1, -1)
         return scaler.transform(data)
-    if len(data)[:, 0] > 1:
+    if len(data[:, 0]) > 1:
         return scaler.transform(data)
 
 
-def load_train_data():
-    total = input('Desea cargar todos los datos o solo un channel? [t/u]: ')
-    if total.lower() == 't':
-        data = np.load('Database_2_total.npy')
-        _names = np.load('database_2_names_ch1.npy')
-    else:
-        path = input('Ingrese Dataset y channel: ')
-        dataset, channel = path.split()
-        data = np.load('{}_total_{}.npy'.format(dataset, channel))
-        _names = np.load('{}_names_{}.npy'.format(dataset, channel))
+def load_data(mode='raw'):
+    Data1 = np.load('raw_Database_1_total.npy')
+    Data2 = np.load('raw_Database_2_total.npy')
+    no_move = np.tile(np.load('no_move_100.npy'), (9, 1))
 
-    feats, labels = data[:, 1:], data[:, :1]
-    feats = normalizar(feats)
-    return feats, labels, _names
-
-def load_test_data(path):
-    data = np.load(path + '.npy')
-    labels, feats = data[:, :1], data[:, 1:2501]
-    feats = normalizar(feats)
-    return labels, feats
-
-
-def load_data():
-    Dat2_data = np.load('Database_2_total.npy')
-    Dat1_data_ch1 = np.load('Database_1_total_ch1.npy')
-    Dat1_data_ch2 = np.load('Database_1_total_ch2.npy')
-    _names = np.load('database_2_names_ch1.npy')
+    print(f'data1: {Data1.shape} data2: {Data2.shape}')
 
     total_data = np.array([])
     for i in range(6):
         if not total_data.any():
-            total_data = np.concatenate((Dat2_data[i * 600:i * 600 + 600, :],
-                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
-                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
-                                        axis=0)
+            total_data = np.concatenate((Data1[i*300:i*300 + 300, :2501],
+                                         Data2[i*600:i*600 + 600, :]), axis=0)
         else:
             total_data = np.concatenate((total_data,
-                                         Dat2_data[i * 600:i * 600 + 600, :],
-                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
-                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
-                                        axis=0)
-    return total_data
+                                         Data1[i*300:i*300 + 300, :2501],
+                                         Data2[i*600:i*600 + 600, :]), axis=0)
+    if mode == 'raw':
+        return np.concatenate((total_data, no_move), axis=0)
+    return abs(np.concatenate((total_data, no_move), axis=0))
 
-def partition_data(feats, moves, test_size=0.2):
-    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5}
+
+def partition_data(feats, moves, test_size=0.2, mode='ho'):
+    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5,
+                 'no_move': 6}
     mod_feats = np.array([])
     # Seleccionar solo los movimientos indicados en 'moves'
-    for name in moves:
+    for i, name in enumerate(moves):
         num = names2num[name]
+        label = np.ones((900, 1)) * i
         temp = feats[num * 900:num * 900 + 900, :]
+        temp[:, 0] = label[:, 0]
         if not mod_feats.any():
             mod_feats = temp
         else:
             mod_feats = np.concatenate((mod_feats, temp), axis=0)
+
+    if mode == 'ho':
+        train, test = train_test_split(mod_feats, test_size=test_size, random_state=42, shuffle=True)
+    else:
+        train, test = train_test_split(mod_feats, test_size=test_size, shuffle=True)
     # Llenar las listas segun el porcentaje de testeo que queremos
-    train = []
-    test = []
-    for i in range(len(moves)):
-        for data in range(900):
-            if data < (900 - test_size * 900):
-                train.append(feats[data + i * 900, :])
-            else:
-                test.append(feats[data + i * 900, :])
+
+    # print(test)
 
     train = np.array(train)
     test = np.array(test)
@@ -120,24 +106,30 @@ def partition_data(feats, moves, test_size=0.2):
     return train, test
 
 
-def get_measure(length):
+def get_measure(length, mode='raw'):
     test_feat = []
     print('Tomando medicion !!')
     while len(test_feat) < length:  #esa cantidad mas 1 del label
         data = read_line()
         test_feat.append(float(data))
     test_feat = np.array(test_feat).reshape(1, -1)
-    return normalizar(test_feat)
+    if mode == 'raw':
+        return normalizar(test_feat)
 
 
 if __name__ == '__main__':
 
-    moves = ['palm', 'spher']
+    moves = ['palm', 'spher', 'no_move']
 
-    train, test = partition_data(load_data(), moves=moves, test_size=0.2)
+    data = load_data(mode='raw')   # load_data()
+
+    train, test = partition_data(data, moves=moves, test_size=0.2, mode='random')
 
     train_feats, train_labels = train[:, 1:], train[:, :1]
     test_feats, test_labels = test[:, 1:], test[:, :1]
+
+    train_feats = normalizar(train_feats)
+    test_feats = normalizar(test_feats)
 
     # plot_data = []
     #
@@ -146,7 +138,7 @@ if __name__ == '__main__':
     with tf.device('/device:GPU:1'):
         model = keras.Sequential([
         keras.layers.Dense(512, activation=tf.nn.relu),
-        keras.layers.Dense(2, activation=tf.nn.softmax)])
+        keras.layers.Dense(len(moves), activation=tf.nn.softmax)])
 
         model.compile(optimizer=tf.train.AdamOptimizer(),
                       loss='sparse_categorical_crossentropy',
@@ -154,15 +146,30 @@ if __name__ == '__main__':
 
         model.fit(train_feats, train_labels, epochs=10)
 
-    test_mode = input('Modo de prueba [sensor/dataset]: ')
+    test_mode = 'dataset'    # input('Modo de prueba [sensor/dataset]: ')
 
     if test_mode.lower() == 'sensor':
         continuar = True
         while continuar:
+
+            # while True:
+            #
+            #     for event in pygame.event.get():
+            #         if event.type == pygame.KEYDOWN:
+            #             if event.key == pygame.K_s:
+            #                 bit_str = str.encode('s')
+            #                 ser.write(bit_str)
+            #             if event.key == pygame.K_a:
+            #                 bit_str = str.encode('a')
+            #                 ser.write(bit_str)
+            #             if event.key == pygame.K_d:
+            #                 bit_str = str.encode('d')
+            #                 ser.write(bit_str)
+
             #Una fila de datos
             test_data = np.zeros((1, 2500))
             while True:
-                if debouncer(pulses=10):
+                if debouncer(pulses=5):
                     test_data = get_measure(2500)
                     break
             # Add the image to a batch where it's the only member.
@@ -172,13 +179,24 @@ if __name__ == '__main__':
 
                 pred_single = model.predict(test_data)
 
-                ind = np.argmax(pred_single)
+                ind = int(np.argmax(pred_single))
                 print(pred_single)
-                moves = moves[::-1]
-                print(moves[ind] + '\n')
+                def_move = moves[ind]
+                print('MOVIENDO: ', def_move)
+
+                if def_move == 'spher':
+                    bit_str = str.encode('a')
+                    ser.write(bit_str)
+                # if def_move == 'palm':
+                #     ser.write('a')
+
+                if def_move == 'no_move':
+                    bit_str = str.encode('s')
+                    ser.write(bit_str)
 
 
-                continuar = True if input('Desea continuar? y/n: ') == 'y' else False
+
+                # continuar = True if input('Desea continuar? y/n: ') == 'y' else False
 
     if test_mode.lower() == 'dataset':
         # Tlabels, Tfeats = load_test_data('Database_1_total_ch2')

@@ -67,22 +67,26 @@ import os
 ## CHANGE DATABASE 1 & 2 TO TOTAL FORM
 
 
-def sort_measures(data, channel='ch1'):
-    data_keys = [name for name in list(data) if channel in name]
-    total_data = np.zeros((150, 3001))
-    for i, name in enumerate(data_keys):
-        y, x = data[name].shape
-        label = np.ones((y, 1)) * i
-        temp_data = np.concatenate((label, data[name]), axis=1)
+def sort_measures(data, database='db1'):
+    N, M = data.shape
+    num = int(N // 6)
+    if database == 'db1':
+        total_data = np.zeros((num, 3001))
+    else:
+        total_data = np.zeros((num, 2501))
+    for i in range(6):
+        label = np.ones((num, 1)) * i
+        cut_data = data[i * num:i * num + num]
+        temp_data = np.concatenate((label, cut_data), axis=1)
         if not total_data.any():
             total_data[:, :] = temp_data
         else:
             total_data = np.concatenate((total_data, temp_data), axis=0)
-    return total_data, np.array(data_keys)
+    return total_data
 
 
 temp_dict = defaultdict(list)
-folder_name = 'Database_1'
+folder_name = 'Database_2'
 
 dir_list = os.listdir(folder_name)
 for path in dir_list:
@@ -94,19 +98,23 @@ for path in dir_list:
 
 
 
-total_dict = {}
+total_dict = np.array([])
 for ind in list(temp_dict):
     test = np.array(temp_dict[ind])
     conct = np.concatenate((test[0, :, :], test[1, :, :], test[2, :, :]), axis=0)
     if folder_name == 'Database_1':
         conct = np.concatenate((test[0, :, :], test[1, :, :], test[2, :, :],
                             test[3, :, :], test[4, :, :]), axis=0)
-    total_dict[ind] = conct
+    if not total_dict.any():
+        total_dict = conct
+    else:
+        total_dict = np.append(total_dict, conct, axis=0)
 
-channel = input('Elija set de datos [ch1/ ch2]: ')
-save_data, data_keys = sort_measures(total_dict, channel=channel)
-save_data = abs(save_data)
+# channel = input('Elija set de datos [ch1/ ch2]: ')
+save_data = sort_measures(total_dict, database='db2')
+print(save_data.shape)
+# save_data = abs(save_data)
 
-np.save('{}_total_{}'.format(folder_name, channel), save_data)
+np.save('raw_{}_total'.format(folder_name), save_data)
 # np.save('{}_names_{}'.format(folder_name, channel), data_keys)
 

@@ -1,5 +1,6 @@
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.neighbors import KNeighborsClassifier as KNN
+from sklearn.preprocessing import Normalizer
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
 import matplotlib.pyplot as plt
@@ -10,34 +11,39 @@ import serial
 import os
 
 
-def normalizar(data_file):
-    mean = data_file.mean(axis=0)
-    std = data_file.std(axis=0)
-    return (data_file - mean) / std
+def normalizar(data):
+    scaler = Normalizer(norm='l2')
+    if len(data[:, 0]) == 1:
+        data = data.reshape(1, -1)
+        return scaler.transform(data)
+    if len(data[:, 0]) > 1:
+        return scaler.transform(data)
 
-def load_data():
-    Dat2_data = np.load('Database_2_total.npy')
-    Dat1_data_ch1 = np.load('Database_1_total_ch1.npy')
-    Dat1_data_ch2 = np.load('Database_1_total_ch2.npy')
-    _names = np.load('database_2_names_ch1.npy')
+
+def load_data(mode='raw'):
+    Data1 = np.load('raw_Database_1_total.npy')
+    Data2 = np.load('raw_Database_2_total.npy')
+    no_move = np.tile(np.load('no_move_100.npy'), (9, 1))
+
+    print(f'data1: {Data1.shape} data2: {Data2.shape}')
 
     total_data = np.array([])
     for i in range(6):
         if not total_data.any():
-            total_data = np.concatenate((Dat2_data[i * 600:i * 600 + 600, :],
-                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
-                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
-                                        axis=0)
+            total_data = np.concatenate((Data1[i*300:i*300 + 300, :2501],
+                                         Data2[i*600:i*600 + 600, :]), axis=0)
         else:
             total_data = np.concatenate((total_data,
-                                         Dat2_data[i * 600:i * 600 + 600, :],
-                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
-                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
-                                        axis=0)
-    return total_data
+                                         Data1[i*300:i*300 + 300, :2501],
+                                         Data2[i*600:i*600 + 600, :]), axis=0)
+    if mode == 'raw':
+        return np.concatenate((total_data, no_move), axis=0)
+    return abs(np.concatenate((total_data, no_move), axis=0))
+
 
 def partition_data(feats, moves, test_size=0.2):
-    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5}
+    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5,
+                 'no_move': 6}
     mod_feats = np.array([])
     # Seleccionar solo los movimientos indicados en 'moves'
     for name in moves:
@@ -64,6 +70,7 @@ def partition_data(feats, moves, test_size=0.2):
 
     return train, test
 
+
 def pca_features(feats, ncmp):
     print("[Seleccion] Aplicando PCA...")
     pca = PCA(n_components=ncmp, svd_solver='full')
@@ -75,6 +82,7 @@ def pca_features(feats, ncmp):
 ##            pickle.dump(pca, open("{}pca.p".format(mode+"_"), "wb"))
 ##            pickle.dump(scaler, open("{}scaler.p".format(mode+"_"), "wb"))
     return feats, pca
+
 
 def train_predict(feats, labels, ncmp):
     print("[Clasificacion] Entrenando clasificadores...")
@@ -133,9 +141,11 @@ def get_measure(length):
 
 if __name__ == '__main__':
 
-    moves = ['palm', 'spher']
+    moves = ['palm', 'spher', 'no_move']
 
-    train, test = partition_data(load_data(), moves=moves, test_size=0.2)
+    data = load_data(mode='raw')  # load_data()
+
+    train, test = partition_data(data, moves=moves, test_size=0.2)
 
     ncmp = [num for num in range(200, 2000, 100)]
 
@@ -157,7 +167,7 @@ if __name__ == '__main__':
         result = np.insert(result, 0, pca_num)
         acc_stack.append(result)
 
-        print('\nAcc obtenida en {} para LDA: {} SVM: {} KNN: {}'.format(pca_num, *result))
+        print('Acc obtenida en {} para LDA: {} SVM: {} KNN: {}\n'.format(*result))
 
     x = np.array([line[0] for line in acc_stack])
 

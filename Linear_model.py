@@ -14,32 +14,27 @@ def normalizar(data):
         return scaler.transform(data)
 
 
-def load_data():
-    decision = input('Database 2     [d2]\nDatabase 1 + 2 [all]\nopcion: ')
-    Dat2_data = np.load('Database_2_total.npy')
-    if decision.lower() == 'd2':
-        return Dat2_data
-    Dat1_data_ch1 = np.load('Database_1_total_ch1.npy')
-    Dat1_data_ch2 = np.load('Database_1_total_ch2.npy')
-    _names = np.load('database_2_names_ch1.npy')
+def load_data(mode='raw'):
+    Data1 = np.load('raw_Database_1_total.npy')
+    Data2 = np.load('raw_Database_2_total.npy')
+    no_move = np.tile(np.load('no_move_100.npy'), (9, 1))
 
     total_data = np.array([])
     for i in range(6):
         if not total_data.any():
-            total_data = np.concatenate((Dat2_data[i * 600:i * 600 + 600, :],
-                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
-                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
-                                        axis=0)
+            total_data = np.concatenate((Data1[i*300:i*300 + 300, :2501],
+                                         Data2[i*600:i*600 + 600, :]), axis=0)
         else:
             total_data = np.concatenate((total_data,
-                                         Dat2_data[i * 600:i * 600 + 600, :],
-                                         Dat1_data_ch1[i * 150:i * 150 + 150, :2501],
-                                         Dat1_data_ch2[i * 150:i * 150 + 150, :2501]),
-                                        axis=0)
-    return total_data
+                                         Data1[i*300:i*300 + 300, :2501],
+                                         Data2[i*600:i*600 + 600, :]), axis=0)
+    if mode == 'raw':
+        return np.concatenate((total_data, no_move), axis=0)
+    return abs(np.concatenate((total_data, no_move), axis=0))
 
 def partition_data(feats, moves, test_size=0.2):
-    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5}
+    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5,
+                 'no_move': 6}
     mod_feats = np.array([])
     # Seleccionar solo los movimientos indicados en 'moves'
     for name in moves:
@@ -98,24 +93,25 @@ def train_classifiers(feats, zero_num=300, alpha=0.01):
     y[N//2 - zero_num:, :] = np.zeros((zero_num, 1))
     spher_class = lm.Ridge(alpha=alpha, normalize=True)
     palm_class = lm.Ridge(alpha=alpha, normalize=True)
-    # cyl_class = lm.Ridge(alpha=0.001, normalize=True)
+    no_move_class = lm.Ridge(alpha=alpha, normalize=True)
 
     spher_class.fit(feats[:N//2, :], y)  #clase 5
     palm_class.fit(feats[N//2:N, :], y)   #clase 4
-    # cyl_class.fit(feats[:600, :], y)         #clase 1
+    no_move_class.fit(feats[N//2:N, :], y)         #clase 1
 
-    return spher_class, palm_class # cyl_class
+    return spher_class, palm_class, no_move_class
 
-def classify(test_data, test_label, spher, palm):
-    acc_list = [0, 0]
-    fails = [0, 0]
+def classify(test_data, test_label, spher, palm, no_move):
+    acc_list = [0, 0, 0]
+    fails = [0, 0, 0]
     for i, line in enumerate(test_data):
         # spher_pred = spher.predict(line)
         # palm_pred = palm.predict(line)
         # cyl_pred = cyl.predict(line)
         line = line.reshape(1, -1)
         predictions = [spher.predict(line),
-                       palm.predict(line)]
+                       palm.predict(line),
+                       no_move.predict(line)]
         # print(predictions)
 
         pred_ind = predictions.index(max(predictions))
@@ -126,14 +122,14 @@ def classify(test_data, test_label, spher, palm):
             fails[pred_ind] += 1
     # print(fails)
 
-    return np.array(acc_list) / test_data.shape[0] / 2
+    return np.array(acc_list) / (test_data.shape[0] / len(acc_list))
 
 
 
 if __name__ == '__main__':
-    moves = ['palm', 'spher']
+    moves = ['palm', 'spher', 'no_move']
 
-    feats = load_data()
+    feats = load_data(mode='abs')
 
     train, test = partition_data(feats, moves=moves,
                                            test_size=0.3)
@@ -147,16 +143,16 @@ if __name__ == '__main__':
 
         print(f'\nRealizando iteracion: {n}')
 
-        spher, palm = train_classifiers(train_feat, zero_num=n, alpha=0.001)
+        spher, palm, no_move = train_classifiers(train_feat, zero_num=n, alpha=0.001)
 
-        acc_list = classify(test_feat, test_label, spher=spher, palm=palm)
+        acc_list = classify(test_feat, test_label, spher=spher, palm=palm, no_move=no_move)
 
         max_by_num.append(acc_list)
 
         # for i in range(3):
         #     print(f'Acc en {names[i]}: {acc_list[i]}')
 
-    avg_by_num = [sum(acc)/2 for acc in max_by_num]
+    avg_by_num = [sum(acc)/3 for acc in max_by_num]
     ind_max_by_num = avg_by_num.index(max(avg_by_num))
     print(f'El maximo valor encontrado en: {n_list[ind_max_by_num]} con '
           f'{max_by_num[ind_max_by_num]}')
@@ -168,12 +164,14 @@ if __name__ == '__main__':
     avg_y = np.array(avg_by_num)
     spher_y = [x[0] for x in max_by_num]
     palm_y = [x[1] for x in max_by_num]
+    no_move_y = [x[2] for x in max_by_num]
 
     plt.plot(tot_x, avg_y, color='blue', label='Promedio esférica - palmar')
     plt.legend(loc='best')
     plt.show()
     plt.plot(tot_x, spher_y, color='green', label='Precisión esférica')
     plt.plot(tot_x, palm_y, color='red', label='Precisión palmar')
+    plt.plot(tot_x, no_move_y, color='blue', label='Precisión no-movimiento')
     plt.legend(loc='best')
     plt.show()
 
