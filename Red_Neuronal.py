@@ -2,7 +2,6 @@
 from sklearn.preprocessing import Normalizer
 from sklearn.model_selection import train_test_split
 from functools import reduce
-import pygame
 import time
 import serial
 # TensorFlow and tf.keras
@@ -17,10 +16,6 @@ import matplotlib.pyplot as plt
 print(tf.__version__)
 
 ser = serial.Serial("COM4", baudrate=115200, timeout=1)
-time.sleep(5)
-pygame.init()
-screen = pygame.display.set_mode((640, 480))
-pygame.display.flip()
 
 def read_line():
     line = ser.readline()
@@ -146,30 +141,16 @@ if __name__ == '__main__':
 
         model.fit(train_feats, train_labels, epochs=10)
 
-    test_mode = 'dataset'    # input('Modo de prueba [sensor/dataset]: ')
+    test_mode = 'sensor'    # input('Modo de prueba [sensor/dataset]: ')
 
     if test_mode.lower() == 'sensor':
         continuar = True
         while continuar:
 
-            # while True:
-            #
-            #     for event in pygame.event.get():
-            #         if event.type == pygame.KEYDOWN:
-            #             if event.key == pygame.K_s:
-            #                 bit_str = str.encode('s')
-            #                 ser.write(bit_str)
-            #             if event.key == pygame.K_a:
-            #                 bit_str = str.encode('a')
-            #                 ser.write(bit_str)
-            #             if event.key == pygame.K_d:
-            #                 bit_str = str.encode('d')
-            #                 ser.write(bit_str)
-
             #Una fila de datos
             test_data = np.zeros((1, 2500))
             while True:
-                if debouncer(pulses=5):
+                if debouncer(pulses=1):
                     test_data = get_measure(2500)
                     break
             # Add the image to a batch where it's the only member.
@@ -185,14 +166,16 @@ if __name__ == '__main__':
                 print('MOVIENDO: ', def_move)
 
                 if def_move == 'spher':
-                    bit_str = str.encode('a')
+                    bit_str = str.encode('d')
                     ser.write(bit_str)
-                # if def_move == 'palm':
-                #     ser.write('a')
+                if def_move == 'palm':
+                    bit_str = str.encode('d')
+                    ser.write(bit_str)
 
                 if def_move == 'no_move':
                     bit_str = str.encode('s')
                     ser.write(bit_str)
+
 
 
 
