@@ -45,18 +45,18 @@ def get_measure(length):
     return np.array(test_feat).reshape(1, -1)
 
 
-ser = serial.Serial("COM4", baudrate=115200, timeout=1)
+ser = serial.Serial("COM5", baudrate=115200, timeout=1)
 
 
 count = 0
 features = np.zeros((1, 2501))
 
-while count < 100:
+while count < 400:
 
     print(f"Ingresando dato {count} a la matriz.. preparese")
-    label = 6 # int(input('Ingrese label de la muestra proxima: '))
+    label = 0 # int(input('Ingrese label de la muestra proxima: '))
     while True:
-        if debouncer(pulses=1):
+        if debouncer(pulses=3):
             test_data = get_measure(2500)
             test_data = np.insert(test_data, 0, label, axis=1)
             if not features.any():

@@ -2,6 +2,8 @@
 from sklearn.preprocessing import Normalizer
 from sklearn.model_selection import train_test_split
 from functools import reduce
+import pickle
+import os
 import time
 import serial
 # TensorFlow and tf.keras
@@ -15,7 +17,7 @@ import matplotlib.pyplot as plt
 
 print(tf.__version__)
 
-ser = serial.Serial("COM4", baudrate=115200, timeout=1)
+ser = serial.Serial("COM5", baudrate=115200, timeout=1)
 
 def read_line():
     line = ser.readline()
@@ -48,6 +50,15 @@ def normalizar(data):
     if len(data[:, 0]) > 1:
         return scaler.transform(data)
 
+
+def load_data_sensor():
+    Data1 = np.tile(np.load('palm_400.npy'), (3, 1))
+    Data2 = np.tile(np.load('spher_400.npy'), (3, 1))
+    no_move = np.tile(np.load('no_move_100.npy'), (12, 1))
+
+    all_data = np.concatenate((Data1, Data2, no_move), axis=0)
+
+    return all_data[:, 1:], all_data[:, :1]
 
 def load_data(mode='raw'):
     Data1 = np.load('raw_Database_1_total.npy')
@@ -115,31 +126,43 @@ def get_measure(length, mode='raw'):
 if __name__ == '__main__':
 
     moves = ['palm', 'spher', 'no_move']
+    #
+    # data = load_data(mode='raw')   # load_data()
+    #
+    # train, test = partition_data(data, moves=moves, test_size=0.2, mode='random')
+    #
+    # train_feats, train_labels = train[:, 1:], train[:, :1]
+    # test_feats, test_labels = test[:, 1:], test[:, :1]
+    #
+    # train_feats = normalizar(train_feats)
+    # test_feats = normalizar(test_feats)
 
-    data = load_data(mode='raw')   # load_data()
-
-    train, test = partition_data(data, moves=moves, test_size=0.2, mode='random')
-
-    train_feats, train_labels = train[:, 1:], train[:, :1]
-    test_feats, test_labels = test[:, 1:], test[:, :1]
-
-    train_feats = normalizar(train_feats)
-    test_feats = normalizar(test_feats)
+    train_feats, train_labels = load_data_sensor()
 
     # plot_data = []
     #
     # for neuron_num in range(5):
 
-    with tf.device('/device:GPU:1'):
-        model = keras.Sequential([
-        keras.layers.Dense(512, activation=tf.nn.relu),
-        keras.layers.Dense(len(moves), activation=tf.nn.softmax)])
+    if 'NN_model_sensor.p' in os.listdir('./'):
+        if input('Modelo encontrado, desea cargarlo ?[y/n]: ') == 'y':
+            model = pickle.load(open('NN_model_sensor.p', 'rb'))
+    else:
+        with tf.device('/device:GPU:1'):
+            model = keras.Sequential([
+            keras.layers.Dense(512, activation=tf.nn.relu),
+            keras.layers.Dense(len(moves), activation=tf.nn.softmax)])
 
-        model.compile(optimizer=tf.train.AdamOptimizer(),
-                      loss='sparse_categorical_crossentropy',
-                      metrics=['accuracy'])
+            model.compile(optimizer=tf.train.AdamOptimizer(),
+                          loss='sparse_categorical_crossentropy',
+                          metrics=['accuracy'])
 
-        model.fit(train_feats, train_labels, epochs=10)
+            model.fit(train_feats, train_labels, epochs=10)
+
+        saver = tf.train.Saver()
+        sess = tf.Session()
+        sess.run(tf.global_variables_initializer())
+        saver.save(sess, 'NN_modelo_sensor')
+
 
     test_mode = 'sensor'    # input('Modo de prueba [sensor/dataset]: ')
 
