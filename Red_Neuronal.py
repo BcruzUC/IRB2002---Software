@@ -2,22 +2,26 @@
 from sklearn.preprocessing import Normalizer
 from sklearn.model_selection import train_test_split
 from functools import reduce
-import pickle
+import random as rn
 import os
 import time
 import serial
+
 # TensorFlow and tf.keras
-import tensorflow as tf
+# import tensorflow as tf
 from tensorflow import keras
+
+import keras as kr
+
+from tensorflow.python.keras import Sequential
 
 # Helper libraries
 import numpy as np
 import matplotlib.pyplot as plt
 
 
-print(tf.__version__)
-
-ser = serial.Serial("COM5", baudrate=115200, timeout=1)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+ser = serial.Serial("COM9", baudrate=115200, timeout=1)
 
 def read_line():
     line = ser.readline()
@@ -50,22 +54,39 @@ def normalizar(data):
     if len(data[:, 0]) > 1:
         return scaler.transform(data)
 
+def ruido(matrix, seed=0):
+    feats, labels = matrix[:, 1:], matrix[:, :1]
+    out_matrix = np.array([])
+    for row in range(matrix.shape[0]):  #Esta recorriendo las columnas, no las filas.
+        rn.seed(seed)
+        temp = rn.normalvariate(1, 0.1)
+        out_row = feats[row, :].reshape(1, -1) * temp
+        if not out_matrix.any():
+            out_matrix = out_row
+        else:
+            out_matrix = np.concatenate((out_matrix, out_row), axis=0)
+    return np.concatenate((labels, out_matrix), axis=1)
+
 
 def load_data_sensor():
-    Data1 = np.tile(np.load('palm_400.npy'), (3, 1))
-    Data2 = np.tile(np.load('spher_400.npy'), (3, 1))
+    Data1 = np.load('palm_400.npy')
+    Data2 = np.load('spher_400.npy')
+    Data1_n = ruido(Data1, seed=0)
+    Data2_n = ruido(Data2, seed=0)
+    Data1_nn = ruido(Data1, seed=42)
+    Data2_nn = ruido(Data2, seed=42)
+
     no_move = np.tile(np.load('no_move_100.npy'), (12, 1))
 
-    all_data = np.concatenate((Data1, Data2, no_move), axis=0)
+    all_data = np.concatenate((Data1, Data1_n, Data1_nn, Data2, Data2_n,
+                               Data2_nn, no_move), axis=0)
 
-    return all_data[:, 1:], all_data[:, :1]
+    return all_data
 
 def load_data(mode='raw'):
     Data1 = np.load('raw_Database_1_total.npy')
     Data2 = np.load('raw_Database_2_total.npy')
     no_move = np.tile(np.load('no_move_100.npy'), (9, 1))
-
-    print(f'data1: {Data1.shape} data2: {Data2.shape}')
 
     total_data = np.array([])
     for i in range(6):
@@ -81,33 +102,31 @@ def load_data(mode='raw'):
     return abs(np.concatenate((total_data, no_move), axis=0))
 
 
-def partition_data(feats, moves, test_size=0.2, mode='ho'):
-    names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5,
-                 'no_move': 6}
-    mod_feats = np.array([])
-    # Seleccionar solo los movimientos indicados en 'moves'
-    for i, name in enumerate(moves):
-        num = names2num[name]
-        label = np.ones((900, 1)) * i
-        temp = feats[num * 900:num * 900 + 900, :]
-        temp[:, 0] = label[:, 0]
-        if not mod_feats.any():
-            mod_feats = temp
-        else:
-            mod_feats = np.concatenate((mod_feats, temp), axis=0)
-
+def partition_data(feats, moves, test_size=0.2, mode='ho', length=2500):
+    if moves:
+        names2num = {'cyl': 0, 'hook': 1, 'tip': 2, 'palm': 3, 'spher': 4, 'lat': 5,
+                     'no_move': 6}
+        mod_feats = np.array([])
+        # Seleccionar solo los movimientos indicados en 'moves'
+        for i, name in enumerate(moves):
+            num = names2num[name]
+            label = np.ones((900, 1)) * i
+            temp = feats[num * 900:num * 900 + 900, :]
+            temp[:, 0] = label[:, 0]
+            if not mod_feats.any():
+                mod_feats = temp
+            else:
+                mod_feats = np.concatenate((mod_feats, temp), axis=0)
+        feats = mod_feats
     if mode == 'ho':
-        train, test = train_test_split(mod_feats, test_size=test_size, random_state=42, shuffle=True)
+        train, test = train_test_split(feats, test_size=test_size, random_state=42, shuffle=True)
     else:
-        train, test = train_test_split(mod_feats, test_size=test_size, shuffle=True)
-    # Llenar las listas segun el porcentaje de testeo que queremos
+        train, test = train_test_split(feats, test_size=test_size, shuffle=True)
 
-    # print(test)
+    train = np.array(train)[:, :length + 1]
+    test = np.array(test)[:, :length + 1]
 
-    train = np.array(train)
-    test = np.array(test)
-
-    print("\n[Hold-Out] Paritioning features into 2 arrays with shapes {} and {}\n".format(train.shape, test.shape))
+    print("\n[DATA] Paritioning features into 2 arrays with shapes {} and {}\n".format(train.shape, test.shape))
 
     return train, test
 
@@ -126,6 +145,8 @@ def get_measure(length, mode='raw'):
 if __name__ == '__main__':
 
     moves = ['palm', 'spher', 'no_move']
+    save_path = 'model'
+    data_length = 1000
     #
     # data = load_data(mode='raw')   # load_data()
     #
@@ -134,47 +155,69 @@ if __name__ == '__main__':
     # train_feats, train_labels = train[:, 1:], train[:, :1]
     # test_feats, test_labels = test[:, 1:], test[:, :1]
     #
-    # train_feats = normalizar(train_feats)
-    # test_feats = normalizar(test_feats)
 
-    train_feats, train_labels = load_data_sensor()
+    data1 = load_data(mode='raw')
+    # data2 = load_data_sensor()
+    train1, test1 = partition_data(data1, moves=moves, test_size=0.2, mode='ho', length=data_length)
+    # train2, test2 = partition_data(data2, moves=None, test_size=0.2, mode='ho')
+
+    train = train1 #np.concatenate((train1, train2), axis=0)
+    test = test1 #np.concatenate((test1, test2), axis=0)
+
+    train_feats, train_labels = train[:, 1:], train[:, :1]
+    test_feats, test_labels = test[:, 1:], test[:, :1]
+
+    train_feats = normalizar(train_feats)
+    test_feats = normalizar(test_feats)
+
+    if 'model.json' in os.listdir('./model') and \
+            input('[MODELO] Modelo encontrado, desea cargarlo ?[y/n]: ') == 'y':
+
+        json_file = open(f'{save_path}/model.json', 'r')
+        loaded_model_json = json_file.read()
+        json_file.close()
+        model = kr.models.model_from_json(loaded_model_json)
+        model.load_weights(f"{save_path}/model_weights.h5")
+        print('\n[MODELO] Modelo cargado con exito')
+        model.compile(optimizer=kr.optimizers.Adam(lr=0.001),
+                      loss='sparse_categorical_crossentropy',
+                      metrics=['accuracy'])
+
+    else:
 
     # plot_data = []
-    #
-    # for neuron_num in range(5):
+    # for num in (128, 256, 512, 767, 1024):
+        model = kr.Sequential()
+        model.add(kr.layers.Dense(512, activation='relu'))
+        model.add(kr.layers.Dense(3, activation='softmax'))
 
-    if 'NN_model_sensor.p' in os.listdir('./'):
-        if input('Modelo encontrado, desea cargarlo ?[y/n]: ') == 'y':
-            model = pickle.load(open('NN_model_sensor.p', 'rb'))
-    else:
-        with tf.device('/device:GPU:1'):
-            model = keras.Sequential([
-            keras.layers.Dense(512, activation=tf.nn.relu),
-            keras.layers.Dense(len(moves), activation=tf.nn.softmax)])
+        model.compile(optimizer=kr.optimizers.Adam(lr=0.001),
+                      loss='sparse_categorical_crossentropy',
+                      metrics=['accuracy'])
 
-            model.compile(optimizer=tf.train.AdamOptimizer(),
-                          loss='sparse_categorical_crossentropy',
-                          metrics=['accuracy'])
-
-            model.fit(train_feats, train_labels, epochs=10)
-
-        saver = tf.train.Saver()
-        sess = tf.Session()
-        sess.run(tf.global_variables_initializer())
-        saver.save(sess, 'NN_modelo_sensor')
+        model.fit(train_feats, train_labels, epochs=10)
+        if input('[MODELO] Desea guardar el modelo? [y/n]: ') == 'y':
+            print('\n[MODELO] Guardando modelo')
+            model_json = model.to_json()
+            with open(f"{save_path}/model.json", "w") as json_file:
+                json_file.write(model_json)
+            # serialize weights to HDF5
+            model.save_weights(f"{save_path}/model_weights.h5")
+            print('\n[MODELO] Modelo guardado con exito')
 
 
     test_mode = 'sensor'    # input('Modo de prueba [sensor/dataset]: ')
 
     if test_mode.lower() == 'sensor':
         continuar = True
-        while continuar:
 
+        while continuar:
+            moves = ['palm', 'spher', 'no_move']
             #Una fila de datos
-            test_data = np.zeros((1, 2500))
+            test_data = np.zeros((1, data_length))
             while True:
                 if debouncer(pulses=1):
-                    test_data = get_measure(2500)
+                    test_data = get_measure(data_length)
                     break
             # Add the image to a batch where it's the only member.
             # test_data = (np.expand_dims(test_data, 0))
@@ -211,12 +254,13 @@ if __name__ == '__main__':
 
         print('Test accuracy:', test_acc)
 
-        # plot_data.append((neuron_num, test_acc))
+        # plot_data.append((num, test_acc))
 
     # plt_x = [x[0] for x in plot_data]
     # plt_y = [x[1] for x in plot_data]
     #
-    # plt.plot(plt_x, plt_y)
+    # plt.plot(plt_x, plt_y, color='lightblue', label='Acc vs N° neurons')
+    # plt.legend(loc='best')
     # plt.show()
 
 
