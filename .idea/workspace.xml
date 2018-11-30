@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="731c3960-b7a3-4916-979e-ef5d944aadb2" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/model/model_weights.h5" afterPath="$PROJECT_DIR$/model/model_weights.h5" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/Get_features.py" afterPath="$PROJECT_DIR$/Get_features.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/Red_Neuronal.py" afterPath="$PROJECT_DIR$/Red_Neuronal.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/model/model.json" afterPath="$PROJECT_DIR$/model/model.json" />
-    </list>
+    <list default="true" id="731c3960-b7a3-4916-979e-ef5d944aadb2" name="Default" comment="" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
