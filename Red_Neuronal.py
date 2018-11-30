@@ -7,13 +7,8 @@ import os
 import time
 import serial
 
-# TensorFlow and tf.keras
-# import tensorflow as tf
-from tensorflow import keras
-
+# Keras para red neuronal
 import keras as kr
-
-from tensorflow.python.keras import Sequential
 
 # Helper libraries
 import numpy as np
@@ -21,7 +16,7 @@ import matplotlib.pyplot as plt
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-ser = serial.Serial("COM9", baudrate=115200, timeout=1)
+ser = serial.Serial("COM4", baudrate=115200, timeout=1)
 
 def read_line():
     line = ser.readline()
@@ -83,20 +78,22 @@ def load_data_sensor():
 
     return all_data
 
-def load_data(mode='raw'):
+def load_data(mode='raw', length=2500):
     Data1 = np.load('raw_Database_1_total.npy')
     Data2 = np.load('raw_Database_2_total.npy')
-    no_move = np.tile(np.load('no_move_100.npy'), (9, 1))
+    no_move = np.tile(np.load('no_move_300.npy'), (3, 1))
+
+    print(no_move.shape)
 
     total_data = np.array([])
     for i in range(6):
         if not total_data.any():
-            total_data = np.concatenate((Data1[i*300:i*300 + 300, :2501],
-                                         Data2[i*600:i*600 + 600, :]), axis=0)
+            total_data = np.concatenate((Data1[i*300:i*300 + 300, :length+1],
+                                         Data2[i*600:i*600 + 600, :length+1]), axis=0)
         else:
             total_data = np.concatenate((total_data,
-                                         Data1[i*300:i*300 + 300, :2501],
-                                         Data2[i*600:i*600 + 600, :]), axis=0)
+                                         Data1[i*300:i*300 + 300, :length+1],
+                                         Data2[i*600:i*600 + 600, :length+1]), axis=0)
     if mode == 'raw':
         return np.concatenate((total_data, no_move), axis=0)
     return abs(np.concatenate((total_data, no_move), axis=0))
@@ -140,25 +137,19 @@ def get_measure(length, mode='raw'):
     test_feat = np.array(test_feat).reshape(1, -1)
     if mode == 'raw':
         return normalizar(test_feat)
-
+    elif mode == 'abs':
+        return normalizar(abs(test_feat))
 
 if __name__ == '__main__':
 
     moves = ['palm', 'spher', 'no_move']
     save_path = 'model'
-    data_length = 1000
-    #
-    # data = load_data(mode='raw')   # load_data()
-    #
-    # train, test = partition_data(data, moves=moves, test_size=0.2, mode='random')
-    #
-    # train_feats, train_labels = train[:, 1:], train[:, :1]
-    # test_feats, test_labels = test[:, 1:], test[:, :1]
-    #
+    data_length = 1200
 
-    data1 = load_data(mode='raw')
+    data1 = load_data(mode='raw', length=1200)
     # data2 = load_data_sensor()
     train1, test1 = partition_data(data1, moves=moves, test_size=0.2, mode='ho', length=data_length)
+
     # train2, test2 = partition_data(data2, moves=None, test_size=0.2, mode='ho')
 
     train = train1 #np.concatenate((train1, train2), axis=0)
@@ -206,41 +197,44 @@ if __name__ == '__main__':
             print('\n[MODELO] Modelo guardado con exito')
 
 
-    test_mode = 'sensor'    # input('Modo de prueba [sensor/dataset]: ')
+    test_mode = input('Modo de prueba [sensor/dataset]: ')
 
     if test_mode.lower() == 'sensor':
         continuar = True
 
         while continuar:
             moves = ['palm', 'spher', 'no_move']
+
             #Una fila de datos
             test_data = np.zeros((1, data_length))
-            while True:
-                if debouncer(pulses=1):
-                    test_data = get_measure(data_length)
-                    break
-            # Add the image to a batch where it's the only member.
-            # test_data = (np.expand_dims(test_data, 0))
-            if test_data.any():
-                test_data = test_data.reshape(1, -1)
+            # while True:
+            #     if debouncer(pulses=1):
+            test_data = get_measure(data_length)
+                    # break
 
-                pred_single = model.predict(test_data)
+            # if test_data.any():
+            test_data = test_data.reshape(1, -1)
 
-                ind = int(np.argmax(pred_single))
-                print(pred_single)
-                def_move = moves[ind]
-                print('MOVIENDO: ', def_move)
+            pred_single = model.predict(test_data)
 
-                if def_move == 'spher':
-                    bit_str = str.encode('d')
-                    ser.write(bit_str)
-                if def_move == 'palm':
-                    bit_str = str.encode('d')
-                    ser.write(bit_str)
+            ind = int(np.argmax(pred_single))
+            def_move = moves[ind]
+            print('MOVIENDO: {}'.format(def_move), end='  ')
 
-                if def_move == 'no_move':
-                    bit_str = str.encode('s')
-                    ser.write(bit_str)
+            if def_move == 'spher':
+                bit_str = str.encode('d110;')
+                # ser.write(bit_str)
+                print('d110;')
+
+            if def_move == 'palm':
+                bit_str = str.encode('d130;')
+                print('d130;')
+                # ser.write(bit_str)
+
+            if def_move == 'no_move':
+                bit_str = str.encode('s')
+                # ser.write(bit_str)
+                print('s;')
 
 
 
