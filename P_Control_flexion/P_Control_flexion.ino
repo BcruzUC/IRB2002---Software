@@ -1,3 +1,4 @@
+
 #define IN1 8 // lado izquierdo
 #define IN2 7 // lado derecho
 #define ENA 5 // enable A
@@ -36,7 +37,7 @@ int SampleTime = 1000;
 
 int Step = 1;
 int minSet = 105;
-int maxSet = 240;
+int maxSet = 140;
 
 char instruccion;
 int e0, ea0, ed0, ei0, e_tmp0 = 0;
@@ -47,11 +48,11 @@ long Time, t_ant;
 char temp_inst;
 int data_int;
 
+
 void loop() {
     //-----------------------------------
     // Actualizando Informacion de los encoders
     newposition = promedio();
-    
 
     if (split_data() > 0){
       instruccion = temp_inst;
@@ -60,13 +61,12 @@ void loop() {
 
     while (instruccion == 'd' and newposition > minSet){
       Input = promedio();
-      int Force = analogRead(Fu);   //incluir en la tomada.. se corta cuando fuerza es mayor a X
+      //int Force = analogRead(Fu);   //incluir en la tomada.. se corta cuando fuerza es mayor a X
       Compute_error();
       avanzar(Output);
-      if ( Output < 30 or Force > 100){
+      if ( Output < 30){
         Detener();
         instruccion = 'j';
-        Serial.print("g");
       }
     }
     if (instruccion == 's' and Input <= maxSet){
@@ -106,7 +106,7 @@ void Detener(){
 
 int promedio(){
   int ac_prom = 0; 
-  for (int i; i<=5; i++){
+  for (int i=0; i<=5; i++){
     int dato = analogRead(Fl);
     ac_prom = ac_prom + dato;
   }
@@ -121,9 +121,9 @@ void Compute_error()
     if (timeChange>=SampleTime)
        {
     // Calcula todas las variables de errores.
-        double error = minSet - Input;
+        double error = abs(minSet - Input);
         errSum += error;
-        double dInput = (Input - lastInput);
+        double dInput = abs(Input - lastInput);
     
     // Calculamos la función de salida del PID.
           Output = abs(kp * error + ki * errSum - kd * dInput);
@@ -155,7 +155,11 @@ void SetSampleTime(int NewSampleTime)
 int split_data(){
   if (Serial.available() > 0){
     char servo = Serial.read();
-    if(servo != ""){
+    if (servo == 's'){
+      temp_inst = servo;
+      return 1;
+    }
+    if(servo == 'd'){
       //here you could check the servo number
       String pos = Serial.readStringUntil(';');
       int int_pos = pos.toInt();

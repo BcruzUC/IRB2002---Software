@@ -145,6 +145,7 @@ if __name__ == '__main__':
     moves = ['palm', 'spher', 'no_move']
     save_path = 'model'
     data_length = 1200
+    move_debouncer = 2
 
     data1 = load_data(mode='raw', length=1200)
     # data2 = load_data_sensor()
@@ -201,7 +202,7 @@ if __name__ == '__main__':
 
     if test_mode.lower() == 'sensor':
         continuar = True
-
+        temp_move = []
         while continuar:
             moves = ['palm', 'spher', 'no_move']
 
@@ -209,32 +210,46 @@ if __name__ == '__main__':
             test_data = np.zeros((1, data_length))
             # while True:
             #     if debouncer(pulses=1):
+
+            while len(temp_move) < move_debouncer:
+                test_data = get_measure(data_length)
+                test_data = test_data.reshape(1, -1)
+                pred_single = model.predict(test_data)
+
+                ind = int(np.argmax(pred_single))
+                def_move = moves[ind]
+                temp_move.append(def_move)
+
             test_data = get_measure(data_length)
-                    # break
-
-            # if test_data.any():
             test_data = test_data.reshape(1, -1)
-
             pred_single = model.predict(test_data)
 
             ind = int(np.argmax(pred_single))
             def_move = moves[ind]
-            print('MOVIENDO: {}'.format(def_move), end='  ')
+            temp_move.append(def_move)
 
-            if def_move == 'spher':
-                bit_str = str.encode('d110;')
-                # ser.write(bit_str)
-                print('d110;')
+            temp_move.pop(0)
+            temp_move.append(def_move)
 
-            if def_move == 'palm':
-                bit_str = str.encode('d130;')
-                print('d130;')
-                # ser.write(bit_str)
+            final_move = temp_move[0] if temp_move[0] == temp_move[1] else None
 
-            if def_move == 'no_move':
-                bit_str = str.encode('s')
-                # ser.write(bit_str)
-                print('s;')
+            if final_move:
+                print('MOVIENDO: {}'.format(final_move), end='  ')
+
+                if final_move == 'spher':
+                    bit_str = str.encode('d110;')
+                    # ser.write(bit_str)
+                    print('d110;')
+
+                if final_move == 'palm':
+                    bit_str = str.encode('d130;')
+                    print('d130;')
+                    # ser.write(bit_str)
+
+                if final_move == 'no_move':
+                    bit_str = str.encode('s')
+                    # ser.write(bit_str)
+                    print('s;')
 
 
 
