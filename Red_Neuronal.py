@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-ser = serial.Serial("COM4", baudrate=115200, timeout=1)
+ser = serial.Serial("COM12", baudrate=115200, timeout=1)
 
 def read_line():
     line = ser.readline()
@@ -128,29 +128,44 @@ def partition_data(feats, moves, test_size=0.2, mode='ho', length=2500):
     return train, test
 
 
-def get_measure(length, mode='raw'):
-    test_feat = []
-    print('Tomando medicion !!')
-    while len(test_feat) < length:  #esa cantidad mas 1 del label
-        data = read_line()
-        test_feat.append(float(data))
-    test_feat = np.array(test_feat).reshape(1, -1)
+def get_measure(data_list, length, step=100, mode='raw'):
+    if max(data_list.shape) < length:
+        while len(data_list) < length:  #esa cantidad mas 1 del label
+            data = read_line()
+            data_list = np.append(data_list, [data], axis=0)
+    else:
+        for i in range(step):
+            data_list = data_list.flatten()
+            data_list = np.delete(data_list, [0], axis=0)
+            data = read_line()
+            data_list = np.append(data_list, [data], axis=0)
+
+    data_list = data_list.reshape(1, -1)
     if mode == 'raw':
-        return normalizar(test_feat)
+        return normalizar(data_list)
     elif mode == 'abs':
-        return normalizar(abs(test_feat))
+        return normalizar(abs(data_list))
+
+
+def predict_measure(model, test_data):
+    test_data = test_data.reshape(1, -1)
+    pred_single = model.predict(test_data)
+
+    ind = int(np.argmax(pred_single))
+    def_move = moves[ind]
+    return def_move
 
 if __name__ == '__main__':
 
     moves = ['palm', 'spher', 'no_move']
     save_path = 'model'
     data_length = 1200
-    move_debouncer = 2
+    move_debouncer = 3
+    step = 800
 
     data1 = load_data(mode='raw', length=1200)
     # data2 = load_data_sensor()
-    train1, test1 = partition_data(data1, moves=moves, test_size=0.2, mode='ho', length=data_length)
-
+    train1, test1 = partition_data(data1, moves=moves, test_size=0, mode='ho', length=data_length)
     # train2, test2 = partition_data(data2, moves=None, test_size=0.2, mode='ho')
 
     train = train1 #np.concatenate((train1, train2), axis=0)
@@ -203,53 +218,42 @@ if __name__ == '__main__':
     if test_mode.lower() == 'sensor':
         continuar = True
         temp_move = []
+        test_data = np.array([])
         while continuar:
             moves = ['palm', 'spher', 'no_move']
+            if not bool(temp_move):
+                while len(temp_move) < move_debouncer:
+                    print('CALIBRANDO...')
+                    test_data = get_measure(test_data, length=data_length, step=step)
+                    def_move = predict_measure(model=model, test_data=test_data)
+                    temp_move.append(def_move)
 
-            #Una fila de datos
-            test_data = np.zeros((1, data_length))
-            # while True:
-            #     if debouncer(pulses=1):
+            else:
+                test_data = get_measure(test_data, length=data_length, step=step)
+                def_move = predict_measure(model=model, test_data=test_data)
 
-            while len(temp_move) < move_debouncer:
-                test_data = get_measure(data_length)
-                test_data = test_data.reshape(1, -1)
-                pred_single = model.predict(test_data)
-
-                ind = int(np.argmax(pred_single))
-                def_move = moves[ind]
+                quit_element = temp_move.pop(0)
                 temp_move.append(def_move)
 
-            test_data = get_measure(data_length)
-            test_data = test_data.reshape(1, -1)
-            pred_single = model.predict(test_data)
 
-            ind = int(np.argmax(pred_single))
-            def_move = moves[ind]
-            temp_move.append(def_move)
+            final_move = max(temp_move, key=temp_move.count)
+            print('LISTA: {} ||'.format(temp_move), end=' ')
+            print('MOVIENDO: {}'.format(final_move), end='  ')
 
-            temp_move.pop(0)
-            temp_move.append(def_move)
+            if final_move == 'spher':
+                bit_str = str.encode('d75;')
+                ser.write(bit_str)
+                print('d75;')
 
-            final_move = temp_move[0] if temp_move[0] == temp_move[1] else None
+            if final_move == 'palm':
+                bit_str = str.encode('d90;')
+                print('d90;')
+                ser.write(bit_str)
 
-            if final_move:
-                print('MOVIENDO: {}'.format(final_move), end='  ')
-
-                if final_move == 'spher':
-                    bit_str = str.encode('d110;')
-                    # ser.write(bit_str)
-                    print('d110;')
-
-                if final_move == 'palm':
-                    bit_str = str.encode('d130;')
-                    print('d130;')
-                    # ser.write(bit_str)
-
-                if final_move == 'no_move':
-                    bit_str = str.encode('s')
-                    # ser.write(bit_str)
-                    print('s;')
+            if final_move == 'no_move':
+                bit_str = str.encode('s')
+                ser.write(bit_str)
+                print('s;')
 
 
 
